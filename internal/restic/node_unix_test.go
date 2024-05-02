@@ -37,8 +37,8 @@ func checkFile(t testing.TB, stat *syscall.Stat_t, node *Node) {
 		t.Errorf("Inode does not match, want %v, got %v", stat.Ino, node.Inode)
 	}
 
-	if node.DeviceID != uint64(stat.Dev) {
-		t.Errorf("Dev does not match, want %v, got %v", stat.Dev, node.DeviceID)
+	if node.DeviceID < 1 || node.DeviceID > 10 {
+		t.Errorf("Dev is invalid or unexpectedly large, got %v", node.DeviceID)
 	}
 
 	if node.Size != uint64(stat.Size) && node.Type != "symlink" {
@@ -109,6 +109,9 @@ func TestNodeFromFileInfo(t *testing.T) {
 		tests = append(tests, Test{"/dev/null", true})
 	}
 
+	maxDeviceId := new(uint64)
+	*maxDeviceId = 0
+
 	for _, test := range tests {
 		t.Run("", func(t *testing.T) {
 			fi, found := stat(t, test.filename)
@@ -142,6 +145,14 @@ func TestNodeFromFileInfo(t *testing.T) {
 			default:
 				t.Fatalf("invalid node type %q", node.Type)
 			}
+
+			if node.DeviceID > *maxDeviceId {
+				*maxDeviceId = node.DeviceID
+			}
 		})
+	}
+
+	if *maxDeviceId <= 1 {
+		t.Errorf("max virtual device ID is %v, expected > 1", *maxDeviceId)
 	}
 }
