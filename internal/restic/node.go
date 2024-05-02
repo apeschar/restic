@@ -586,6 +586,35 @@ func lookupGroup(gid uint32) string {
 	return group
 }
 
+var (
+	deviceIdMap   = make(map[uint64]uint64)
+	nextDeviceId  = uint64(1)
+	deviceIdMutex = sync.RWMutex{}
+)
+
+// Mapping of physical device IDs to snapshot-specific sequential device IDs.
+// This stabilizes device IDs across backups of different ZFS filesystem
+// snapshots or between boots when using btrfs.
+func lookupDeviceId(phys uint64) uint64 {
+	deviceIdMutex.RLock()
+	virt, ok := deviceIdMap[phys]
+	deviceIdMutex.RUnlock()
+
+	if ok {
+		return virt
+	}
+
+	deviceIdMutex.Lock()
+	virt = nextDeviceId
+	nextDeviceId++
+	deviceIdMap[phys] = virt
+	deviceIdMutex.Unlock()
+
+	debug.Log("Using virtual device ID %v for physical device ID %v", virt, phys)
+
+	return virt
+}
+
 func (node *Node) fillExtra(path string, fi os.FileInfo) error {
 	stat, ok := toStatT(fi.Sys())
 	if !ok {
@@ -597,7 +626,7 @@ func (node *Node) fillExtra(path string, fi os.FileInfo) error {
 	}
 
 	node.Inode = uint64(stat.ino())
-	node.DeviceID = uint64(stat.dev())
+	node.DeviceID = lookupDeviceId(stat.dev())
 
 	node.fillTimes(stat)
 
